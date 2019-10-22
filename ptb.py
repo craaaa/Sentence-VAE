@@ -19,12 +19,12 @@ class PTB(Dataset):
         self.max_sequence_length = kwargs.get('max_sequence_length', 50)
         self.min_occ = kwargs.get('min_occ', 3)
 
-        self.raw_data_path = os.path.join(data_dir, 'ptb.'+split+'.txt')
-        self.data_file = 'ptb.'+split+'.json'
-        self.vocab_file = 'ptb.vocab.json'
+        self.raw_data_path = os.path.join(data_dir, split+'.txt')
+        self.data_file = split+'.json'
+        self.vocab_file = 'vocab.json'
 
         if create_data:
-            print("Creating new %s ptb data."%split.upper())
+            print("Creating new %s data."%split.upper())
             self._create_data()
 
         elif not os.path.exists(os.path.join(self.data_dir, self.data_file)):
