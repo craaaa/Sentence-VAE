@@ -4,7 +4,7 @@ import torch
 import argparse
 
 from model import SentenceVAE
-from utils import to_var, idx2word, interpolate
+from utils import to_var, idx2defandword, interpolate
 
 
 def main(args):
@@ -13,9 +13,11 @@ def main(args):
         vocab = json.load(file)
 
     w2i, i2w = vocab['w2i'], vocab['i2w']
+    a2i, i2a = vocab['a2i'], vocab['i2a']
 
     model = SentenceVAE(
         vocab_size=len(w2i),
+        alphabet_size=len(a2i),
         sos_idx=w2i['<sos>'],
         eos_idx=w2i['<eos>'],
         pad_idx=w2i['<pad>'],
@@ -44,14 +46,14 @@ def main(args):
 
     samples, z = model.inference(n=args.num_samples)
     print('----------SAMPLES----------')
-    print(*idx2word(samples, i2w=i2w, pad_idx=w2i['<pad>']), sep='\n')
+    print(*idx2defandword(samples, i2w=i2w, i2a=i2w, pad_idx=w2i['<pad>']), sep='\n')
 
     z1 = torch.randn([args.latent_size]).numpy()
     z2 = torch.randn([args.latent_size]).numpy()
     z = to_var(torch.from_numpy(interpolate(start=z1, end=z2, steps=8)).float())
     samples, _ = model.inference(z=z)
     print('-------INTERPOLATION-------')
-    print(*idx2word(samples, i2w=i2w, pad_idx=w2i['<pad>']), sep='\n')
+    print(*idx2defandword(samples, i2w=i2w, i2a=i2w, pad_idx=w2i['<pad>']), sep='\n')
 
 if __name__ == '__main__':
 

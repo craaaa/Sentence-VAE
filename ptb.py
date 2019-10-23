@@ -19,7 +19,8 @@ class PTB(Dataset):
         self.max_sequence_length = kwargs.get('max_sequence_length', 50)
         self.min_occ = kwargs.get('min_occ', 3)
 
-        self.raw_data_path = os.path.join(data_dir, split+'.txt')
+        self.raw_definition_path = os.path.join(data_dir, split+'.def.txt')
+        self.raw_word_path = os.path.join(data_dir, split+'.word.txt')
         self.data_file = split+'.json'
         self.vocab_file = 'vocab.json'
 
@@ -44,12 +45,18 @@ class PTB(Dataset):
         return {
             'input': np.asarray(self.data[idx]['input']),
             'target': np.asarray(self.data[idx]['target']),
-            'length': self.data[idx]['length']
+            'word': np.asarray(self.data[idx]['word']),
+            'length': self.data[idx]['length'],
+            'word_length': self.data[idx]['word_length']
         }
 
     @property
     def vocab_size(self):
         return len(self.w2i)
+
+    @property
+    def alphabet_size(self):
+        return len(self.a2i)
 
     @property
     def pad_idx(self):
@@ -73,6 +80,12 @@ class PTB(Dataset):
     def get_i2w(self):
         return self.i2w
 
+    def get_a2i(self):
+        return self.a2i
+
+    def get_i2a(self):
+        return self.i2a
+
 
     def _load_data(self, vocab=True):
 
@@ -82,12 +95,14 @@ class PTB(Dataset):
             with open(os.path.join(self.data_dir, self.vocab_file), 'r') as file:
                 vocab = json.load(file)
             self.w2i, self.i2w = vocab['w2i'], vocab['i2w']
+            self.a2i, self.i2a = vocab['a2i'], vocab['i2a']
 
     def _load_vocab(self):
         with open(os.path.join(self.data_dir, self.vocab_file), 'r') as vocab_file:
             vocab = json.load(vocab_file)
 
         self.w2i, self.i2w = vocab['w2i'], vocab['i2w']
+        self.a2i, self.i2a = vocab['a2i'], vocab['i2a']
 
     def _create_data(self):
 
@@ -99,7 +114,7 @@ class PTB(Dataset):
         tokenizer = TweetTokenizer(preserve_case=False)
 
         data = defaultdict(dict)
-        with open(self.raw_data_path, 'r') as file:
+        with open(self.raw_definition_path, 'r') as file:
 
             for i, line in enumerate(file):
 
@@ -125,6 +140,25 @@ class PTB(Dataset):
                 data[id]['target'] = target
                 data[id]['length'] = length
 
+        with open(self.raw_word_path, 'r') as file:
+
+            for i, line in enumerate(file):
+
+                words = list(line.strip())
+
+                target = words[:self.max_sequence_length-1]
+                target = target + ['<eos>']
+
+                length = len(target)
+
+                target.extend(['<pad>'] * (self.max_sequence_length-length))
+
+                target = [self.w2i.get(w, self.a2i['<unk>']) for w in target]
+
+                data[i]['word'] = target
+                data[i]['word_length'] = length
+
+
         with io.open(os.path.join(self.data_dir, self.data_file), 'wb') as data_file:
             data = json.dumps(data, ensure_ascii=False)
             data_file.write(data.encode('utf8', 'replace'))
@@ -138,15 +172,20 @@ class PTB(Dataset):
         tokenizer = TweetTokenizer(preserve_case=False)
 
         w2c = OrderedCounter()
+        a2c = OrderedCounter()
         w2i = dict()
         i2w = dict()
+        a2i = dict()
+        i2a = dict()
 
         special_tokens = ['<pad>', '<unk>', '<sos>', '<eos>']
         for st in special_tokens:
             i2w[len(w2i)] = st
             w2i[st] = len(w2i)
+            i2a[len(a2i)] = st
+            a2i[st] = len(a2i)
 
-        with open(self.raw_data_path, 'r') as file:
+        with open(self.raw_definition_path, 'r') as file:
 
             for i, line in enumerate(file):
                 words = tokenizer.tokenize(line)
@@ -159,9 +198,23 @@ class PTB(Dataset):
 
         assert len(w2i) == len(i2w)
 
-        print("Vocablurary of %i keys created." %len(w2i))
+        with open(self.raw_word_path, 'r') as file:
 
-        vocab = dict(w2i=w2i, i2w=i2w)
+            for i, line in enumerate(file):
+                words = list(line.strip())
+                w2c.update(words)
+
+        for w, c in w2c.items():
+            if c > self.min_occ and w not in special_tokens:
+                i2a[len(a2i)] = w
+                a2i[w] = len(a2i)
+
+        assert len(a2i) == len(i2a)
+
+        print("Vocabulary of %i keys created." %len(w2i))
+        print("Alphabet of %i keys created." % len(a2i))
+
+        vocab = dict(w2i=w2i, i2w=i2w, a2i=a2i, i2a=i2a)
         with io.open(os.path.join(self.data_dir, self.vocab_file), 'wb') as vocab_file:
             data = json.dumps(vocab, ensure_ascii=False)
             vocab_file.write(data.encode('utf8', 'replace'))

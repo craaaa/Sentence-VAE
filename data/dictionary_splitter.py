@@ -56,15 +56,20 @@ def train_test_validate_split(dictionary, folder="ptb"):
 
     def processed_word(word):
         return word + "\n"
-        # return " ".join(word) + "\n"
 
     if not os.path.exists(folder):
         os.makedirs(folder)
 
     for type, dataset in zip(['train', 'test', 'valid'], [train_definitions, test_definitions, valid_definitions]):
-            with open(os.path.join(folder, "{}.txt".format(type)), 'w') as f:
+            with open(os.path.join(folder, "{}.def.txt".format(type)), 'w') as f:
                 for word in dataset:
                     f.write(processed_word(word))
+
+    for type, dataset in zip(['train', 'test', 'valid'], [train_words, test_words, valid_words]):
+            with open(os.path.join(folder, "{}.word.txt".format(type)), 'w') as f:
+                for word in dataset:
+                    f.write(processed_word(word))
+
 
     print("TRAIN: {} VALID: {} TEST: {}".format(len(train_words),
                                                 len(valid_words),

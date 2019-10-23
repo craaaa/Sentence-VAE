@@ -15,7 +15,7 @@ from model import SentenceVAE
 
 def main(args):
 
-    ts = time.strftime('%Y-%b-%d-%H:%M:%S', time.gmtime())
+    ts = time.strftime('%Y-%b-%d-%H:%M:%S', time.localtime())
 
     splits = ['train', 'valid'] + (['test'] if args.test else [])
 
@@ -30,6 +30,7 @@ def main(args):
         )
 
     model = SentenceVAE(
+        alphabet_size=datasets['train'].alphabet_size,
         vocab_size=datasets['train'].vocab_size,
         sos_idx=datasets['train'].sos_idx,
         eos_idx=datasets['train'].eos_idx,
@@ -67,20 +68,27 @@ def main(args):
             return min(1, step/x0)
 
     NLL = torch.nn.NLLLoss(size_average=False, ignore_index=datasets['train'].pad_idx)
-    def loss_fn(logp, target, length, mean, logv, anneal_function, step, k, x0):
+    def loss_fn(def_logp, word_logp, def_target, def_length, word_target, word_length, mean, logv, anneal_function, step, k, x0):
 
         # cut-off unnecessary padding from target, and flatten
-        target = target[:, :torch.max(length).data[0]].contiguous().view(-1)
-        logp = logp.view(-1, logp.size(2))
-        
+        def_target = def_target[:, :torch.max(def_length).data[0]].contiguous().view(-1)
+        def_logp = def_logp.view(-1, def_logp.size(2))
+
         # Negative Log Likelihood
-        NLL_loss = NLL(logp, target)
+        def_NLL_loss = NLL(def_logp, def_target)
+
+        #
+        word_target = word_target[:, :torch.max(word_length).data[0]].contiguous().view(-1)
+        word_logp = word_logp.view(-1, word_logp.size(2))
+
+        # Word NLL
+        word_NLL_loss = NLL(word_logp, word_target)
 
         # KL Divergence
         KL_loss = -0.5 * torch.sum(1 + logv - mean.pow(2) - logv.exp())
         KL_weight = kl_anneal_function(anneal_function, step, k, x0)
 
-        return NLL_loss, KL_loss, KL_weight
+        return def_NLL_loss, word_NLL_loss, KL_loss, KL_weight
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
 
@@ -115,13 +123,12 @@ def main(args):
                         batch[k] = to_var(v)
 
                 # Forward pass
-                logp, mean, logv, z = model(batch['input'], batch['length'])
+                [def_logp, word_logp], mean, logv, z = model(batch['input'], batch['length'], batch['word_length'])
 
                 # loss calculation
-                NLL_loss, KL_loss, KL_weight = loss_fn(logp, batch['target'],
-                    batch['length'], mean, logv, args.anneal_function, step, args.k, args.x0)
+                def_NLL_loss, word_NLL_loss, KL_loss, KL_weight = loss_fn(def_logp, word_logp, batch['target'], batch['length'], batch['word'], batch['word_length'], mean, logv, args.anneal_function, step, args.k, args.x0)
 
-                loss = (NLL_loss + KL_weight * KL_loss)/batch_size
+                loss = (def_NLL_loss + word_NLL_loss + KL_weight * KL_loss)/batch_size
 
                 # backward + optimization
                 if split == 'train':
@@ -136,13 +143,14 @@ def main(args):
 
                 if args.tensorboard_logging:
                     writer.add_scalar("%s/ELBO"%split.upper(), loss.data[0], epoch*len(data_loader) + iteration)
-                    writer.add_scalar("%s/NLL Loss"%split.upper(), NLL_loss.data[0]/batch_size, epoch*len(data_loader) + iteration)
+                    writer.add_scalar("%s/Def NLL Loss"%split.upper(), def_NLL_loss.data[0]/batch_size, epoch*len(data_loader) + iteration)
+                    writer.add_scalar("%s/Word NLL Loss"%split.upper(), word_NLL_loss.data[0]/batch_size, epoch*len(data_loader) + iteration)
                     writer.add_scalar("%s/KL Loss"%split.upper(), KL_loss.data[0]/batch_size, epoch*len(data_loader) + iteration)
                     writer.add_scalar("%s/KL Weight"%split.upper(), KL_weight, epoch*len(data_loader) + iteration)
 
                 if iteration % args.print_every == 0 or iteration+1 == len(data_loader):
-                    print("%s Batch %04d/%i, Loss %9.4f, NLL-Loss %9.4f, KL-Loss %9.4f, KL-Weight %6.3f"
-                        %(split.upper(), iteration, len(data_loader)-1, loss.data[0], NLL_loss.data[0]/batch_size, KL_loss.data[0]/batch_size, KL_weight))
+                    print("%s Batch %04d/%i, Loss %9.4f, Def NLL-Loss %9.4f, Word NLL-Loss %9.4f, KL-Loss %9.4f, KL-Weight %6.3f"
+                        %(split.upper(), iteration, len(data_loader)-1, loss.data[0], def_NLL_loss.data[0]/batch_size, word_NLL_loss.data[0]/batch_size, KL_loss.data[0]/batch_size, KL_weight))
 
                 if split == 'valid':
                     if 'target_sents' not in tracker:

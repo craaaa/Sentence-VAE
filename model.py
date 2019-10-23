@@ -5,7 +5,7 @@ from utils import to_var
 
 class SentenceVAE(nn.Module):
 
-    def __init__(self, vocab_size, embedding_size, rnn_type, hidden_size, word_dropout, embedding_dropout, latent_size,
+    def __init__(self, alphabet_size, vocab_size, embedding_size, rnn_type, hidden_size, word_dropout, embedding_dropout, latent_size,
                 sos_idx, eos_idx, pad_idx, unk_idx, max_sequence_length, num_layers=1, bidirectional=False):
 
         super().__init__()
@@ -25,6 +25,7 @@ class SentenceVAE(nn.Module):
         self.hidden_size = hidden_size
 
         self.embedding = nn.Embedding(vocab_size, embedding_size)
+        self.alph_embedding = nn.Embedding(alphabet_size, embedding_size)
         self.word_dropout_rate = word_dropout
         self.embedding_dropout = nn.Dropout(p=embedding_dropout)
 
@@ -40,16 +41,30 @@ class SentenceVAE(nn.Module):
         self.encoder_rnn = rnn(embedding_size, hidden_size, num_layers=num_layers, bidirectional=self.bidirectional, batch_first=True)
         self.decoder_rnn = rnn(embedding_size, hidden_size, num_layers=num_layers, bidirectional=self.bidirectional, batch_first=True)
 
+        self.word_decoder_rnn = rnn(embedding_size, hidden_size, num_layers=num_layers, bidirectional=self.bidirectional, batch_first=True)
+
         self.hidden_factor = (2 if bidirectional else 1) * num_layers
 
         self.hidden2mean = nn.Linear(hidden_size * self.hidden_factor, latent_size)
         self.hidden2logv = nn.Linear(hidden_size * self.hidden_factor, latent_size)
         self.latent2hidden = nn.Linear(latent_size, hidden_size * self.hidden_factor)
         self.outputs2vocab = nn.Linear(hidden_size * (2 if bidirectional else 1), vocab_size)
+        self.outputs2alphabet = nn.Linear(hidden_size * (2 if bidirectional else 1), alphabet_size)
 
-    def forward(self, input_sequence, length):
+        self.definition_decoder_layers = {'embedding': self.embedding,
+                                          'decoder_rnn': self.decoder_rnn,
+                                          'outputs2vocab': self.outputs2vocab}
+
+        self.word_decoder_layers = {'embedding': self.embedding,
+                                    'decoder_rnn': self.word_decoder_rnn,
+                                    'outputs2vocab': self.outputs2vocab}
+
+
+    def forward(self, input_sequence, length, word_length):
 
         batch_size = input_sequence.size(0)
+
+        # sort input sequences by length
         sorted_lengths, sorted_idx = torch.sort(length, descending=True)
         input_sequence = input_sequence[sorted_idx]
 
@@ -83,7 +98,23 @@ class SentenceVAE(nn.Module):
         else:
             hidden = hidden.unsqueeze(0)
 
+
+        decoded_def = self.decode_forward_pass(input_sequence, hidden, sorted_lengths, sorted_idx, self.definition_decoder_layers)
+
+        sorted_lengths, sorted_idx = torch.sort(word_length, descending=True)
+        input_sequence = input_sequence[sorted_idx]
+
+        decoded_word = self.decode_forward_pass(input_sequence, hidden, sorted_lengths, sorted_idx, self.word_decoder_layers)
+
+        return [decoded_def, decoded_word], mean, logv, z
+
+    def decode_forward_pass(self, input_sequence, hidden, sorted_lengths, sorted_idx, decoder_layers):
+        embedding = decoder_layers['embedding']
+        decoder_rnn = decoder_layers['decoder_rnn']
+        outputs2vocab = decoder_layers['outputs2vocab']
         # decoder input
+        input_embedding = embedding(input_sequence)
+
         if self.word_dropout_rate > 0:
             # randomly replace decoder input with <unk>
             prob = torch.rand(input_sequence.size())
@@ -92,12 +123,13 @@ class SentenceVAE(nn.Module):
             prob[(input_sequence.data - self.sos_idx) * (input_sequence.data - self.pad_idx) == 0] = 1
             decoder_input_sequence = input_sequence.clone()
             decoder_input_sequence[prob < self.word_dropout_rate] = self.unk_idx
-            input_embedding = self.embedding(decoder_input_sequence)
+            input_embedding = embedding(decoder_input_sequence)
         input_embedding = self.embedding_dropout(input_embedding)
+
         packed_input = rnn_utils.pack_padded_sequence(input_embedding, sorted_lengths.data.tolist(), batch_first=True)
 
         # decoder forward pass
-        outputs, _ = self.decoder_rnn(packed_input, hidden)
+        outputs, _ = decoder_rnn(packed_input, hidden)
 
         # process outputs
         padded_outputs = rnn_utils.pad_packed_sequence(outputs, batch_first=True)[0]
@@ -107,12 +139,10 @@ class SentenceVAE(nn.Module):
         b,s,_ = padded_outputs.size()
 
         # project outputs to vocab
-        logp = nn.functional.log_softmax(self.outputs2vocab(padded_outputs.view(-1, padded_outputs.size(2))), dim=-1)
+        logp = nn.functional.log_softmax(outputs2vocab(padded_outputs.view(-1, padded_outputs.size(2))), dim=-1)
         logp = logp.view(b, s, self.embedding.num_embeddings)
 
-
-        return logp, mean, logv, z
-
+        return logp
 
     def inference(self, n=4, z=None):
 
@@ -130,6 +160,11 @@ class SentenceVAE(nn.Module):
 
         hidden = hidden.unsqueeze(0)
 
+        def_generations = self.predict(hidden, self.decoder_rnn, batch_size)
+        word_generations = self.predict(hidden, self.word_decoder_rnn, batch_size)
+        return [def_generations, word_generations], z
+
+    def predict(self, hidden, decoder_rnn, batch_size):
         # required for dynamic stopping of sentence generation
         sequence_idx = torch.arange(0, batch_size, out=self.tensor()).long() # all idx of batch
         sequence_running = torch.arange(0, batch_size, out=self.tensor()).long() # all idx of batch which are still generating
@@ -149,7 +184,7 @@ class SentenceVAE(nn.Module):
 
             input_embedding = self.embedding(input_sequence)
 
-            output, hidden = self.decoder_rnn(input_embedding, hidden)
+            output, hidden = decoder_rnn(input_embedding, hidden)
 
             logits = self.outputs2vocab(output)
 
@@ -174,8 +209,7 @@ class SentenceVAE(nn.Module):
                 running_seqs = torch.arange(0, len(running_seqs), out=self.tensor()).long()
 
             t += 1
-
-        return generations, z
+        return generations
 
     def _sample(self, dist, mode='greedy'):
 
