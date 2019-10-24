@@ -41,6 +41,7 @@ def idx2defandword(def_and_word, i2w, i2a, pad_idx):
     def_string = idx2word(def_idx, i2w=i2w, pad_idx=pad_idx)
     word_string = idx2word(word_idx, i2w=i2a, pad_idx=pad_idx, sep="")
 
+    #[:-5] removes the <eos> token at the end of the prediction
     return [word[:-5] + ": " + defn[:-5] for defn, word in zip(def_string, word_string)]
 
 def interpolate(start, end, steps):
