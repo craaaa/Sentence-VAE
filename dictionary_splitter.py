@@ -45,10 +45,8 @@ def generate_un_prefixed_word_dictionaries(dictionary):
     # print(negative_words['unclean'])
     return positive_words, negative_words
 
-
-def train_test_validate_split(dictionary, folder="ptb"):
-    words = list(dictionary.keys())
-    definitions = list(dictionary.values())
+def train_test_validate_split(definition_pairs, folder="data/ptb"):
+    words, definitions = zip(*definition_pairs)
 
     train_words, test_words, train_definitions, test_definitions = train_test_split(words, definitions, test_size=0.1, random_state=42)
 
@@ -71,12 +69,13 @@ def train_test_validate_split(dictionary, folder="ptb"):
                     f.write(processed_word(word))
 
 
+    print("Dataset saved to {}".format(folder))
     print("TRAIN: {} VALID: {} TEST: {}".format(len(train_words),
                                                 len(valid_words),
                                                 len(test_words)
                                                 ))
 
-with open('WebstersEnglishDictionary/dictionary.json') as f:
+with open('data/WebstersEnglishDictionary/dictionary.json') as f:
     dictionary = json.load(f)
     print("Dictionary size: {}".format(len(dictionary)))
 
@@ -84,6 +83,6 @@ pos, neg = generate_un_prefixed_word_dictionaries(dictionary)
 
 tuples = {word: definition for dict in [pos, neg] for word, definitions in dict.items() for definition in definitions[:1]}
 
-first_def = {word: definition for word, definitions in dictionary.items() for definition in split_dictionary_entry(definitions)[:1]}
+first_def = [(word, definition) for word, definitions in dictionary.items() for definition in split_dictionary_entry(definitions)[:min(len(definitions),5)]]
 
-train_test_validate_split(first_def, folder="first_def")
+train_test_validate_split(first_def, folder="data/five_defs")
