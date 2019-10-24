@@ -49,7 +49,7 @@ class SentenceVAE(nn.Module):
         self.hidden2logv = nn.Linear(hidden_size * self.hidden_factor, latent_size)
         self.latent2hidden = nn.Linear(latent_size, hidden_size * self.hidden_factor)
         self.outputs2vocab = nn.Linear(hidden_size * (2 if bidirectional else 1), vocab_size)
-        self.outputs2alphabet = nn.Linear(hidden_size * (2 if bidirectional else 1), alphabet_size)
+        self.outputs2alph = nn.Linear(hidden_size * (2 if bidirectional else 1), alphabet_size)
 
         self.definition_decoder_layers = {'embedding': self.embedding,
                                           'decoder_rnn': self.decoder_rnn,
@@ -57,7 +57,7 @@ class SentenceVAE(nn.Module):
 
         self.word_decoder_layers = {'embedding': self.embedding,
                                     'decoder_rnn': self.word_decoder_rnn,
-                                    'outputs2vocab': self.outputs2vocab}
+                                    'outputs2vocab': self.outputs2alph}
 
 
     def forward(self, input_sequence, length, word_length):
@@ -140,7 +140,7 @@ class SentenceVAE(nn.Module):
 
         # project outputs to vocab
         logp = nn.functional.log_softmax(outputs2vocab(padded_outputs.view(-1, padded_outputs.size(2))), dim=-1)
-        logp = logp.view(b, s, self.embedding.num_embeddings)
+        logp = logp.view(b, s, logp.size()[1])
 
         return logp
 
@@ -160,11 +160,14 @@ class SentenceVAE(nn.Module):
 
         hidden = hidden.unsqueeze(0)
 
-        def_generations = self.predict(hidden, self.decoder_rnn, batch_size)
-        word_generations = self.predict(hidden, self.word_decoder_rnn, batch_size)
+        def_generations = self.predict(hidden, batch_size, self.definition_decoder_layers)
+        word_generations = self.predict(hidden, batch_size, self.word_decoder_layers)
         return [def_generations, word_generations], z
 
-    def predict(self, hidden, decoder_rnn, batch_size):
+    def predict(self, hidden, batch_size, decoder_layers):
+        embedding = decoder_layers['embedding']
+        decoder_rnn = decoder_layers['decoder_rnn']
+        outputs2vocab = decoder_layers['outputs2vocab']
         # required for dynamic stopping of sentence generation
         sequence_idx = torch.arange(0, batch_size, out=self.tensor()).long() # all idx of batch
         sequence_running = torch.arange(0, batch_size, out=self.tensor()).long() # all idx of batch which are still generating
@@ -182,11 +185,11 @@ class SentenceVAE(nn.Module):
 
             input_sequence = input_sequence.unsqueeze(1)
 
-            input_embedding = self.embedding(input_sequence)
+            input_embedding = embedding(input_sequence)
 
             output, hidden = decoder_rnn(input_embedding, hidden)
 
-            logits = self.outputs2vocab(output)
+            logits = outputs2vocab(output)
 
             input_sequence = self._sample(logits)
 

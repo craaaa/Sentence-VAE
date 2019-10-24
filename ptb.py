@@ -153,7 +153,7 @@ class PTB(Dataset):
 
                 target.extend(['<pad>'] * (self.max_sequence_length-length))
 
-                target = [self.w2i.get(w, self.a2i['<unk>']) for w in target]
+                target = [self.a2i.get(w, self.a2i['<unk>']) for w in target]
 
                 data[i]['word'] = target
                 data[i]['word_length'] = length
@@ -202,9 +202,9 @@ class PTB(Dataset):
 
             for i, line in enumerate(file):
                 words = list(line.strip())
-                w2c.update(words)
+                a2c.update(words)
 
-        for w, c in w2c.items():
+        for w, c in a2c.items():
             if c > self.min_occ and w not in special_tokens:
                 i2a[len(a2i)] = w
                 a2i[w] = len(a2i)

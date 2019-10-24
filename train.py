@@ -60,6 +60,7 @@ def main(args):
 
     save_model_path = os.path.join(args.save_model_path, ts)
     os.makedirs(save_model_path)
+    print ("Saving model to directory: " + save_model_path)
 
     def kl_anneal_function(anneal_function, step, k, x0):
         if anneal_function == 'logistic':
@@ -67,17 +68,21 @@ def main(args):
         elif anneal_function == 'linear':
             return min(1, step/x0)
 
-    NLL = torch.nn.NLLLoss(size_average=False, ignore_index=datasets['train'].pad_idx)
-    def loss_fn(def_logp, word_logp, def_target, def_length, word_target, word_length, mean, logv, anneal_function, step, k, x0):
+    def word_weight_function(step, k, x0):
+        return float(1/(1+np.exp(-k*(step-x0))))
 
-        # cut-off unnecessary padding from target, and flatten
+    NLL = torch.nn.NLLLoss(size_average=False, ignore_index=datasets['train'].pad_idx)
+
+    def loss_fn(def_logp, word_logp, def_target, def_length, word_target, word_length, mean, logv):
+
+        # cut-off unnecessary padding from target definition, and flatten
         def_target = def_target[:, :torch.max(def_length).data[0]].contiguous().view(-1)
         def_logp = def_logp.view(-1, def_logp.size(2))
 
         # Negative Log Likelihood
         def_NLL_loss = NLL(def_logp, def_target)
 
-        #
+        # cut off padding for words
         word_target = word_target[:, :torch.max(word_length).data[0]].contiguous().view(-1)
         word_logp = word_logp.view(-1, word_logp.size(2))
 
@@ -86,9 +91,18 @@ def main(args):
 
         # KL Divergence
         KL_loss = -0.5 * torch.sum(1 + logv - mean.pow(2) - logv.exp())
-        KL_weight = kl_anneal_function(anneal_function, step, k, x0)
 
-        return def_NLL_loss, word_NLL_loss, KL_loss, KL_weight
+        return def_NLL_loss, word_NLL_loss, KL_loss
+
+    def get_weights(anneal_function, step, k, x0):
+        # for logistic function, k = growth rate
+        KL_weight = kl_anneal_function(anneal_function, step, k, x0)
+        word_weight = word_weight_function(step, k*2, x0)
+
+        return  {'def': 1,
+                 'word': word_weight,
+                 'kl': KL_weight
+                }
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
 
@@ -126,9 +140,14 @@ def main(args):
                 [def_logp, word_logp], mean, logv, z = model(batch['input'], batch['length'], batch['word_length'])
 
                 # loss calculation
-                def_NLL_loss, word_NLL_loss, KL_loss, KL_weight = loss_fn(def_logp, word_logp, batch['target'], batch['length'], batch['word'], batch['word_length'], mean, logv, args.anneal_function, step, args.k, args.x0)
+                def_NLL_loss, word_NLL_loss, KL_loss = loss_fn(def_logp, word_logp, batch['target'], batch['length'], batch['word'], batch['word_length'], mean, logv)
+                weights = get_weights( args.anneal_function, step, args.k, args.x0)
 
-                loss = (def_NLL_loss + word_NLL_loss + KL_weight * KL_loss)/batch_size
+                loss = (weights['def'] * def_NLL_loss +
+                        weights['word'] * word_NLL_loss +
+                        weights['kl'] * KL_loss)/batch_size
+
+                mean_logv = torch.mean(logv)
 
                 # backward + optimization
                 if split == 'train':
@@ -146,11 +165,12 @@ def main(args):
                     writer.add_scalar("%s/Def NLL Loss"%split.upper(), def_NLL_loss.data[0]/batch_size, epoch*len(data_loader) + iteration)
                     writer.add_scalar("%s/Word NLL Loss"%split.upper(), word_NLL_loss.data[0]/batch_size, epoch*len(data_loader) + iteration)
                     writer.add_scalar("%s/KL Loss"%split.upper(), KL_loss.data[0]/batch_size, epoch*len(data_loader) + iteration)
-                    writer.add_scalar("%s/KL Weight"%split.upper(), KL_weight, epoch*len(data_loader) + iteration)
+                    writer.add_scalar("%s/KL Weight"%split.upper(), weights['kl'], epoch*len(data_loader) + iteration)
+                    writer.add_scalar("%s/Word Weight"%split.upper(), weights['word'], epoch*len(data_loader) + iteration)
 
                 if iteration % args.print_every == 0 or iteration+1 == len(data_loader):
-                    print("%s Batch %04d/%i, Loss %9.4f, Def NLL-Loss %9.4f, Word NLL-Loss %9.4f, KL-Loss %9.4f, KL-Weight %6.3f"
-                        %(split.upper(), iteration, len(data_loader)-1, loss.data[0], def_NLL_loss.data[0]/batch_size, word_NLL_loss.data[0]/batch_size, KL_loss.data[0]/batch_size, KL_weight))
+                    print("%s Batch %04d/%i, Loss %9.4f, Def NLL-Loss %9.4f, Word NLL-Loss %9.4f  Word-Weight %6.3f, KL-Loss %9.4f, KL-Weight %6.3f KL-VAL %9.4f"
+                        %(split.upper(), iteration, len(data_loader)-1, loss.data[0], def_NLL_loss.data[0]/batch_size, word_NLL_loss.data[0]/batch_size, weights['word'], KL_loss.data[0]/batch_size, weights['kl'], mean_logv))
 
                 if split == 'valid':
                     if 'target_sents' not in tracker:
@@ -188,7 +208,7 @@ if __name__ == '__main__':
     parser.add_argument('--min_occ', type=int, default=1)
     parser.add_argument('--test', action='store_true')
 
-    parser.add_argument('-ep', '--epochs', type=int, default=10)
+    parser.add_argument('-ep', '--epochs', type=int, default=4)
     parser.add_argument('-bs', '--batch_size', type=int, default=32)
     parser.add_argument('-lr', '--learning_rate', type=float, default=0.001)
 

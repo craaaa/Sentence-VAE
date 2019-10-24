@@ -46,14 +46,14 @@ def main(args):
 
     samples, z = model.inference(n=args.num_samples)
     print('----------SAMPLES----------')
-    print(*idx2defandword(samples, i2w=i2w, i2a=i2w, pad_idx=w2i['<pad>']), sep='\n')
+    print(*idx2defandword(samples, i2w=i2w, i2a=i2a, pad_idx=w2i['<pad>']), sep='\n')
 
     z1 = torch.randn([args.latent_size]).numpy()
     z2 = torch.randn([args.latent_size]).numpy()
     z = to_var(torch.from_numpy(interpolate(start=z1, end=z2, steps=8)).float())
     samples, _ = model.inference(z=z)
     print('-------INTERPOLATION-------')
-    print(*idx2defandword(samples, i2w=i2w, i2a=i2w, pad_idx=w2i['<pad>']), sep='\n')
+    print(*idx2defandword(samples, i2w=i2w, i2a=i2a, pad_idx=w2i['<pad>']), sep='\n')
 
 if __name__ == '__main__':
 
