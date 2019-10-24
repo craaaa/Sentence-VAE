@@ -97,7 +97,7 @@ def main(args):
     def get_weights(anneal_function, step, k, x0):
         # for logistic function, k = growth rate
         KL_weight = kl_anneal_function(anneal_function, step, k, x0)
-        word_weight = word_weight_function(step, k*2, x0)
+        word_weight = word_weight_function(step, k, x0)
 
         return  {'def': 1,
                  'word': word_weight,
