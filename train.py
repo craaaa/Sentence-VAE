@@ -26,7 +26,8 @@ def main(args):
             split=split,
             create_data=args.create_data,
             max_sequence_length=args.max_sequence_length,
-            min_occ=args.min_occ
+            min_occ=args.min_occ,
+            use_bert=args.False
         )
 
     model = SentenceVAE(
@@ -220,6 +221,7 @@ if __name__ == '__main__':
     parser.add_argument('-ls', '--latent_size', type=int, default=16)
     parser.add_argument('-wd', '--word_dropout', type=float, default=0)
     parser.add_argument('-ed', '--embedding_dropout', type=float, default=0.5)
+    parser.add_argument('-bert', '--use_bert', action='store_false')
 
     parser.add_argument('-af', '--anneal_function', type=str, default='logistic')
     parser.add_argument('-k', '--k', type=float, default=0.0025)

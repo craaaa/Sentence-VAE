@@ -6,12 +6,13 @@ import numpy as np
 from collections import defaultdict
 from torch.utils.data import Dataset
 from nltk.tokenize import TweetTokenizer
+from transformers import BertTokenizer
 
 from utils import OrderedCounter
 
 class PTB(Dataset):
 
-    def __init__(self, data_dir, split, create_data, **kwargs):
+    def __init__(self, data_dir, split, create_data, use_bert=False, **kwargs):
 
         super().__init__()
         self.data_dir = data_dir
@@ -26,11 +27,11 @@ class PTB(Dataset):
 
         if create_data:
             print("Creating new %s data."%split.upper())
-            self._create_data()
+            self._create_data(use_bert)
 
         elif not os.path.exists(os.path.join(self.data_dir, self.data_file)):
             print("%s preprocessed file not found at %s. Creating new."%(split.upper(), os.path.join(self.data_dir, self.data_file)))
-            self._create_data()
+            self._create_data(use_bert)
 
         else:
             self._load_data()
@@ -60,19 +61,19 @@ class PTB(Dataset):
 
     @property
     def pad_idx(self):
-        return self.w2i['<pad>']
+        return self.w2i[self.pad]
 
     @property
     def sos_idx(self):
-        return self.w2i['<sos>']
+        return self.w2i[self.sos]
 
     @property
     def eos_idx(self):
-        return self.w2i['<eos>']
+        return self.w2i[self.eos]
 
     @property
     def unk_idx(self):
-        return self.w2i['<unk>']
+        return self.w2i[self.unk]
 
     def get_w2i(self):
         return self.w2i
@@ -97,21 +98,35 @@ class PTB(Dataset):
             self.w2i, self.i2w = vocab['w2i'], vocab['i2w']
             self.a2i, self.i2a = vocab['a2i'], vocab['i2a']
 
-    def _load_vocab(self):
+    def _load_vocab(self, bert):
         with open(os.path.join(self.data_dir, self.vocab_file), 'r') as vocab_file:
             vocab = json.load(vocab_file)
+
+        if bert:
+            self.pad = '[PAD]'
+            self.unk = '[UNK]'
+            self.sos = '[CLS]'
+            self.eos = '[SEP]'
+        else:
+            self.pad = '[PAD]'
+            self.unk = '[UNK]'
+            self.sos = '[SOS]'
+            self.eos = '[EOS]'
 
         self.w2i, self.i2w = vocab['w2i'], vocab['i2w']
         self.a2i, self.i2a = vocab['a2i'], vocab['i2a']
 
-    def _create_data(self):
+    def _create_data(self, bert):
 
         if self.split == 'train':
-            self._create_vocab()
+            self._create_vocab(bert)
         else:
-            self._load_vocab()
+            self._load_vocab(bert)
 
-        tokenizer = TweetTokenizer(preserve_case=False)
+        if bert:
+            tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+        else:
+            tokenizer = TweetTokenizer(preserve_case=False)
 
         data = defaultdict(dict)
         with open(self.raw_definition_path, 'r') as file:
@@ -120,20 +135,22 @@ class PTB(Dataset):
 
                 words = tokenizer.tokenize(line)
 
-                input = ['<sos>'] + words
-                input = input[:self.max_sequence_length]
-
-                target = words[:self.max_sequence_length-1]
-                target = target + ['<eos>']
+                input = [self.sos] + words
+                if bert: # add [SEP] to end of input
+                    input = input[:self.max_sequence_length-1] + [self.eos]
+                    target = input
+                else:
+                    input = input[:self.max_sequence_length]
+                    target = words[:self.max_sequence_length-1] + [self.eos]
 
                 assert len(input) == len(target), "%i, %i"%(len(input), len(target))
                 length = len(input)
 
-                input.extend(['<pad>'] * (self.max_sequence_length-length))
-                target.extend(['<pad>'] * (self.max_sequence_length-length))
+                input.extend([self.pad] * (self.max_sequence_length-length))
+                target.extend([self.pad] * (self.max_sequence_length-length))
 
-                input = [self.w2i.get(w, self.w2i['<unk>']) for w in input]
-                target = [self.w2i.get(w, self.w2i['<unk>']) for w in target]
+                input = [self.w2i.get(w, self.w2i[self.unk]) for w in input]
+                target = [self.w2i.get(w, self.w2i[self.unk]) for w in target]
 
                 id = len(data)
                 data[id]['input'] = input
@@ -147,13 +164,13 @@ class PTB(Dataset):
                 words = list(line.strip())
 
                 target = words[:self.max_sequence_length-1]
-                target = target + ['<eos>']
+                target = target + [self.eos]
 
                 length = len(target)
 
-                target.extend(['<pad>'] * (self.max_sequence_length-length))
+                target.extend([self.pad] * (self.max_sequence_length-length))
 
-                target = [self.a2i.get(w, self.a2i['<unk>']) for w in target]
+                target = [self.a2i.get(w, self.a2i[self.unk]) for w in target]
 
                 data[i]['word'] = target
                 data[i]['word_length'] = length
@@ -165,7 +182,7 @@ class PTB(Dataset):
 
         self._load_data(vocab=False)
 
-    def _create_vocab(self):
+    def _create_vocab(self, bert):
 
         assert self.split == 'train', "Vocablurary can only be created for training file."
 
@@ -178,7 +195,18 @@ class PTB(Dataset):
         a2i = dict()
         i2a = dict()
 
-        special_tokens = ['<pad>', '<unk>', '<sos>', '<eos>']
+        if bert:
+            self.pad = '[PAD]'
+            self.unk = '[UNK]'
+            self.sos = '[CLS]'
+            self.eos = '[SEP]'
+        else:
+            self.pad = '[PAD]'
+            self.unk = '[UNK]'
+            self.sos = '[SOS]'
+            self.eos = '[EOS]'
+
+        special_tokens = [self.pad, self.unk, self.sos, self.eos]
         for st in special_tokens:
             i2w[len(w2i)] = st
             w2i[st] = len(w2i)
@@ -219,4 +247,4 @@ class PTB(Dataset):
             data = json.dumps(vocab, ensure_ascii=False)
             vocab_file.write(data.encode('utf8', 'replace'))
 
-        self._load_vocab()
+        self._load_vocab(bert)
