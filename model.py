@@ -171,7 +171,7 @@ class SentenceVAE(nn.Module):
         # required for dynamic stopping of sentence generation
         sequence_idx = torch.arange(0, batch_size, out=self.tensor()).long() # all idx of batch
         sequence_running = torch.arange(0, batch_size, out=self.tensor()).long() # all idx of batch which are still generating
-        sequence_mask = torch.ones(batch_size, out=self.tensor()).byte()
+        sequence_mask = torch.ones(batch_size, out=self.tensor()).bool()
 
         running_seqs = torch.arange(0, batch_size, out=self.tensor()).long() # idx of still generating sequences with respect to current loop
 
@@ -197,11 +197,11 @@ class SentenceVAE(nn.Module):
             generations = self._save_sample(generations, input_sequence, sequence_running, t)
 
             # update gloabl running sequence
-            sequence_mask[sequence_running] = (input_sequence != self.eos_idx).data
+            sequence_mask[sequence_running] = (input_sequence.eq(self.eos_idx)).eq(False)
             sequence_running = sequence_idx.masked_select(sequence_mask)
 
             # update local running sequences
-            running_mask = (input_sequence != self.eos_idx).data
+            running_mask = (input_sequence.eq(self.eos_idx)).eq(False)
             running_seqs = running_seqs.masked_select(running_mask)
 
             # prune input and hidden state according to local update
@@ -218,7 +218,7 @@ class SentenceVAE(nn.Module):
 
         if mode == 'greedy':
             _, sample = torch.topk(dist, 1, dim=-1)
-        sample = sample.squeeze()
+        sample = sample.squeeze().view(-1)
 
         return sample
 

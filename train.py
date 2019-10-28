@@ -72,19 +72,19 @@ def main(args):
     def word_weight_function(step, k, x0):
         return float(1/(1+np.exp(-k*(step-x0))))
 
-    NLL = torch.nn.NLLLoss(size_average=False, ignore_index=datasets['train'].pad_idx)
+    NLL = torch.nn.NLLLoss(reduction='sum', ignore_index=datasets['train'].pad_idx)
 
     def loss_fn(def_logp, word_logp, def_target, def_length, word_target, word_length, mean, logv):
 
         # cut-off unnecessary padding from target definition, and flatten
-        def_target = def_target[:, :torch.max(def_length).data[0]].contiguous().view(-1)
+        def_target = def_target[:,:torch.max(def_length).item()].contiguous().view(-1)
         def_logp = def_logp.view(-1, def_logp.size(2))
 
         # Negative Log Likelihood
         def_NLL_loss = NLL(def_logp, def_target)
 
         # cut off padding for words
-        word_target = word_target[:, :torch.max(word_length).data[0]].contiguous().view(-1)
+        word_target = word_target[:, :torch.max(word_length).item()].contiguous().view(-1)
         word_logp = word_logp.view(-1, word_logp.size(2))
 
         # Word NLL
@@ -125,9 +125,9 @@ def main(args):
 
             # Enable/Disable Dropout
             if split == 'train':
-                model.train()
+                model = model.train()
             else:
-                model.eval()
+                model = model.eval()
 
             for iteration, batch in enumerate(data_loader):
 
@@ -142,7 +142,7 @@ def main(args):
 
                 # loss calculation
                 def_NLL_loss, word_NLL_loss, KL_loss = loss_fn(def_logp, word_logp, batch['target'], batch['length'], batch['word'], batch['word_length'], mean, logv)
-                weights = get_weights( args.anneal_function, step, args.k, args.x0)
+                weights = get_weights(args.anneal_function, step, args.k, args.x0)
 
                 loss = (weights['def'] * def_NLL_loss +
                         weights['word'] * word_NLL_loss +
@@ -159,24 +159,24 @@ def main(args):
 
 
                 # bookkeepeing
-                tracker['ELBO'] = torch.cat((tracker['ELBO'], loss.data))
+                tracker['ELBO'] = torch.cat((tracker['ELBO'], loss.detach().unsqueeze(0)))
 
                 if args.tensorboard_logging:
-                    writer.add_scalar("%s/ELBO"%split.upper(), loss.data[0], epoch*len(data_loader) + iteration)
-                    writer.add_scalar("%s/Def NLL Loss"%split.upper(), def_NLL_loss.data[0]/batch_size, epoch*len(data_loader) + iteration)
-                    writer.add_scalar("%s/Word NLL Loss"%split.upper(), word_NLL_loss.data[0]/batch_size, epoch*len(data_loader) + iteration)
-                    writer.add_scalar("%s/KL Loss"%split.upper(), KL_loss.data[0]/batch_size, epoch*len(data_loader) + iteration)
+                    writer.add_scalar("%s/ELBO"%split.upper(), loss.item(), epoch*len(data_loader) + iteration)
+                    writer.add_scalar("%s/Def NLL Loss"%split.upper(), def_NLL_loss.item()/batch_size, epoch*len(data_loader) + iteration)
+                    writer.add_scalar("%s/Word NLL Loss"%split.upper(), word_NLL_loss.item()/batch_size, epoch*len(data_loader) + iteration)
+                    writer.add_scalar("%s/KL Loss"%split.upper(), KL_loss.item()/batch_size, epoch*len(data_loader) + iteration)
                     writer.add_scalar("%s/KL Weight"%split.upper(), weights['kl'], epoch*len(data_loader) + iteration)
                     writer.add_scalar("%s/Word Weight"%split.upper(), weights['word'], epoch*len(data_loader) + iteration)
 
                 if iteration % args.print_every == 0 or iteration+1 == len(data_loader):
                     print("%s Batch %04d/%i, Loss %9.4f, Def NLL-Loss %9.4f, Word NLL-Loss %9.4f  Word-Weight %6.3f, KL-Loss %9.4f, KL-Weight %6.3f KL-VAL %9.4f"
-                        %(split.upper(), iteration, len(data_loader)-1, loss.data[0], def_NLL_loss.data[0]/batch_size, word_NLL_loss.data[0]/batch_size, weights['word'], KL_loss.data[0]/batch_size, weights['kl'], mean_logv))
+                        %(split.upper(), iteration, len(data_loader)-1, loss.item(), def_NLL_loss.item()/batch_size, word_NLL_loss.item()/batch_size, weights['word'], KL_loss.item()/batch_size, weights['kl'], mean_logv))
 
                 if split == 'valid':
                     if 'target_sents' not in tracker:
                         tracker['target_sents'] = list()
-                    tracker['target_sents'] += idx2word(batch['target'].data, i2w=datasets['train'].get_i2w(), pad_idx=datasets['train'].pad_idx)
+                    tracker['target_sents'] += idx2word(batch['target'], i2w=datasets['train'].get_i2w(), pad_idx=datasets['train'].pad_idx)
                     tracker['z'] = torch.cat((tracker['z'], z.data), dim=0)
 
             print("%s Epoch %02d/%i, Mean ELBO %9.4f"%(split.upper(), epoch, args.epochs, torch.mean(tracker['ELBO'])))
