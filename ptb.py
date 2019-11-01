@@ -27,6 +27,7 @@ class PTB(Dataset):
 
         self.use_bert = use_bert
         if self.use_bert:
+        # if True:
             self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
         else:
             self.tokenizer = TweetTokenizer(preserve_case=False)
@@ -67,7 +68,10 @@ class PTB(Dataset):
 
     @property
     def alphabet_size(self):
-        return len(self.a2i)
+        if self.use_bert:
+            return self.tokenizer.vocab_size
+        else:
+            return len(self.a2i)
 
     @property
     def pad_idx(self):
@@ -234,10 +238,18 @@ class PTB(Dataset):
 
         assert len(a2i) == len(i2a)
 
-        print("Vocabulary of %i keys created." %len(w2i))
-        print("Alphabet of %i keys created." % len(a2i))
+        if self.use_bert:
+            vocab_size = self.tokenizer.vocab_size
+            alph_size = self.tokenizer.vocab_size
+        else:
+            vocab_size = len(w2i)
+            alph_size = len(a2i)
 
-        vocab = dict(w2i=w2i, i2w=i2w, a2i=a2i, i2a=i2a)
+        print("Vocabulary of %i keys created." % vocab_size)
+        print("Alphabet of %i keys created." % alph_size)
+
+
+        vocab = dict(w2i=w2i, i2w=i2w, a2i=a2i, i2a=i2a, vocab_size=vocab_size, alph_size=alph_size)
         with io.open(os.path.join(self.data_dir, self.vocab_file), 'wb') as vocab_file:
             data = json.dumps(vocab, ensure_ascii=False)
             vocab_file.write(data.encode('utf8', 'replace'))

@@ -3,6 +3,7 @@ import numpy as np
 from torch.autograd import Variable
 from collections import defaultdict, Counter, OrderedDict
 
+
 class OrderedCounter(Counter, OrderedDict):
     'Counter that remembers the order elements are first encountered'
 
@@ -18,27 +19,28 @@ def to_var(x, volatile=False):
     return Variable(x, volatile=volatile)
 
 
-def idx2word(idx, i2w, pad_idx, sep=" "):
+def idx2word(idx, i2w, pad_idx, sep=" ", use_bert=False, bert_tokenizer=None):
 
     sent_str = [str()]*len(idx)
 
     for i, sent in enumerate(idx):
-        for word_id in sent:
-            if word_id == pad_idx:
-                break
-            sent_str[i] += i2w[str(word_id.item())] + sep
+        if use_bert:
+            sent_str[i] = bert_tokenizer.decode(sent)
+        else:
+            for word_id in sent:
+                if word_id == pad_idx:
+                    break
+                sent_str[i] += i2w[str(word_id.item())] + sep
 
-        sent_str[i] = sent_str[i].strip()
-
+            sent_str[i] = sent_str[i].strip()
 
     return sent_str
 
 
-def idx2defandword(def_and_word, i2w, i2a, pad_idx):
+def idx2defandword(def_and_word, i2w, i2a, pad_idx, use_bert=False, bert_tokenizer=None):
     def_idx, word_idx = def_and_word
-    def_string = idx2word(def_idx, i2w=i2w, pad_idx=pad_idx)
-    word_string = idx2word(word_idx, i2w=i2a, pad_idx=pad_idx, sep="")
-
+    def_string = idx2word(def_idx, i2w=i2w, pad_idx=pad_idx, use_bert=use_bert, bert_tokenizer=bert_tokenizer)
+    word_string = idx2word(word_idx, i2w=i2a, pad_idx=pad_idx, sep="", use_bert=use_bert, bert_tokenizer=bert_tokenizer)
     #[:-5] removes the <eos> token at the end of the prediction
     return [word[:-5] + ": " + defn[:-5] for defn, word in zip(def_string, word_string)]
 

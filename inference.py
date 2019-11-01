@@ -4,6 +4,7 @@ import torch
 import argparse
 
 from model import SentenceVAE
+from transformers import BertTokenizer
 from utils import to_var, idx2defandword, interpolate
 
 
@@ -14,10 +15,13 @@ def main(args):
 
     w2i, i2w = vocab['w2i'], vocab['i2w']
     a2i, i2a = vocab['a2i'], vocab['i2a']
+    vocab_size = vocab['vocab_size']
+    alphabet_size = vocab['alph_size']
+
 
     model = SentenceVAE(
-        vocab_size=len(w2i),
-        alphabet_size=len(a2i),
+        vocab_size=vocab_size,
+        alphabet_size=alphabet_size,
         sos_idx=w2i['[CLS]'],
         eos_idx=w2i['[SEP]'],
         pad_idx=w2i['[PAD]'],
@@ -39,21 +43,23 @@ def main(args):
     model.load_state_dict(torch.load(args.load_checkpoint))
     print("Model loaded from %s"%(args.load_checkpoint))
 
+    bert_tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+
     if torch.cuda.is_available():
         model = model.cuda()
 
     model.eval()
 
     samples, z = model.inference(n=args.num_samples)
+    print(*idx2defandword(samples, i2w=i2w, i2a=i2a, pad_idx=w2i['[PAD]'], use_bert=args.use_bert, bert_tokenizer=bert_tokenizer), sep='\n', )
     print('----------SAMPLES----------')
-    print(*idx2defandword(samples, i2w=i2w, i2a=i2a, pad_idx=w2i['[PAD]']), sep='\n')
 
     z1 = torch.randn([args.latent_size]).numpy()
     z2 = torch.randn([args.latent_size]).numpy()
     z = to_var(torch.from_numpy(interpolate(start=z1, end=z2, steps=8)).float())
     samples, _ = model.inference(z=z)
     print('-------INTERPOLATION-------')
-    print(*idx2defandword(samples, i2w=i2w, i2a=i2a, pad_idx=w2i['[PAD]']), sep='\n')
+    print(*idx2defandword(samples, i2w=i2w, i2a=i2a, pad_idx=w2i['[PAD]'], use_bert=args.use_bert, bert_tokenizer=bert_tokenizer), sep='\n')
 
 if __name__ == '__main__':
 
@@ -64,7 +70,7 @@ if __name__ == '__main__':
 
     parser.add_argument('-dd', '--data_dir', type=str, default='data')
     parser.add_argument('-ms', '--max_sequence_length', type=int, default=50)
-    parser.add_argument('-eb', '--embedding_size', type=int, default=300)
+    parser.add_argument('-eb', '--embedding_size', type=int, default=768)
     parser.add_argument('-rnn', '--rnn_type', type=str, default='gru')
     parser.add_argument('-hs', '--hidden_size', type=int, default=256)
     parser.add_argument('-wd', '--word_dropout', type=float, default=0)
@@ -72,6 +78,7 @@ if __name__ == '__main__':
     parser.add_argument('-ls', '--latent_size', type=int, default=16)
     parser.add_argument('-nl', '--num_layers', type=int, default=1)
     parser.add_argument('-bi', '--bidirectional', action='store_true')
+    parser.add_argument('-bert', '--use_bert', action='store_false')
 
     args = parser.parse_args()
 

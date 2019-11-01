@@ -27,7 +27,7 @@ def main(args):
             create_data=args.create_data,
             max_sequence_length=args.max_sequence_length,
             min_occ=args.min_occ,
-            use_bert=True
+            use_bert=args.use_bert
         )
 
     model = SentenceVAE(
@@ -176,7 +176,9 @@ def main(args):
                 if split == 'valid':
                     if 'target_sents' not in tracker:
                         tracker['target_sents'] = list()
-                    tracker['target_sents'] += idx2word(batch['target'], i2w=datasets['train'].get_i2w(), pad_idx=datasets['train'].pad_idx)
+                    tracker['target_sents'] += idx2word(batch['target'], i2w=datasets['train'].get_i2w(), pad_idx=datasets['train'].pad_idx,
+                        use_bert=args.use_bert,
+                        bert_tokenizer=datasets['valid'].tokenizer)
                     tracker['z'] = torch.cat((tracker['z'], z.data), dim=0)
 
             print("%s Epoch %02d/%i, Mean ELBO %9.4f"%(split.upper(), epoch, args.epochs, torch.mean(tracker['ELBO'])))
@@ -221,7 +223,7 @@ if __name__ == '__main__':
     parser.add_argument('-ls', '--latent_size', type=int, default=16)
     parser.add_argument('-wd', '--word_dropout', type=float, default=0)
     parser.add_argument('-ed', '--embedding_dropout', type=float, default=0.5)
-    parser.add_argument('-bert', '--use_bert', action='store_false')
+    parser.add_argument('-bert', '--use_bert', action='store_true', default=False)
 
     parser.add_argument('-af', '--anneal_function', type=str, default='logistic')
     parser.add_argument('-k', '--k', type=float, default=0.0025)

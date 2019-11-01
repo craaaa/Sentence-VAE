@@ -74,9 +74,9 @@ class SentenceVAE(nn.Module):
 
         # ENCODER
         input_embedding = self.embedding(input_sequence)
-        # if self.using_bert:
-        #     input_embedding = [torch.sum(torch.stack(layer)[-4:], 0) for layer in input_embedding]
-        print (input_embedding.shape)
+        if self.using_bert:
+            # sum last four layers, which gives the best accuracy as a sentence vector
+            input_embedding = [torch.sum(torch.stack(layer)[-4:], 0) for layer in input_embedding]
 
         packed_input = rnn_utils.pack_padded_sequence(input_embedding, sorted_lengths.data.tolist(), batch_first=True)
 
