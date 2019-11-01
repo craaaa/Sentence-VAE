@@ -27,7 +27,7 @@ def main(args):
             create_data=args.create_data,
             max_sequence_length=args.max_sequence_length,
             min_occ=args.min_occ,
-            use_bert=args.False
+            use_bert=True
         )
 
     model = SentenceVAE(
@@ -125,9 +125,9 @@ def main(args):
 
             # Enable/Disable Dropout
             if split == 'train':
-                model = model.train()
+                model.train()
             else:
-                model = model.eval()
+                model.eval()
 
             for iteration, batch in enumerate(data_loader):
 
@@ -213,7 +213,7 @@ if __name__ == '__main__':
     parser.add_argument('-bs', '--batch_size', type=int, default=32)
     parser.add_argument('-lr', '--learning_rate', type=float, default=0.001)
 
-    parser.add_argument('-eb', '--embedding_size', type=int, default=300)
+    parser.add_argument('-eb', '--embedding_size', type=int, default=768)
     parser.add_argument('-rnn', '--rnn_type', type=str, default='gru')
     parser.add_argument('-hs', '--hidden_size', type=int, default=256)
     parser.add_argument('-nl', '--num_layers', type=int, default=1)

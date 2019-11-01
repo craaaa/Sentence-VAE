@@ -25,13 +25,20 @@ class PTB(Dataset):
         self.data_file = split+'.json'
         self.vocab_file = 'vocab.json'
 
+        self.use_bert = use_bert
+        if self.use_bert:
+            self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+        else:
+            self.tokenizer = TweetTokenizer(preserve_case=False)
+
+
         if create_data:
             print("Creating new %s data."%split.upper())
-            self._create_data(use_bert)
+            self._create_data()
 
         elif not os.path.exists(os.path.join(self.data_dir, self.data_file)):
             print("%s preprocessed file not found at %s. Creating new."%(split.upper(), os.path.join(self.data_dir, self.data_file)))
-            self._create_data(use_bert)
+            self._create_data()
 
         else:
             self._load_data()
@@ -53,7 +60,10 @@ class PTB(Dataset):
 
     @property
     def vocab_size(self):
-        return len(self.w2i)
+        if self.use_bert:
+            return self.tokenizer.vocab_size
+        else:
+            return len(self.w2i)
 
     @property
     def alphabet_size(self):
@@ -93,52 +103,38 @@ class PTB(Dataset):
         with open(os.path.join(self.data_dir, self.data_file), 'r') as file:
             self.data = json.load(file)
         if vocab:
-            with open(os.path.join(self.data_dir, self.vocab_file), 'r') as file:
-                vocab = json.load(file)
-            self.w2i, self.i2w = vocab['w2i'], vocab['i2w']
-            self.a2i, self.i2a = vocab['a2i'], vocab['i2a']
+            self._load_vocab()
 
-    def _load_vocab(self, bert):
+    def _load_vocab(self):
         with open(os.path.join(self.data_dir, self.vocab_file), 'r') as vocab_file:
             vocab = json.load(vocab_file)
 
-        if bert:
-            self.pad = '[PAD]'
-            self.unk = '[UNK]'
-            self.sos = '[CLS]'
-            self.eos = '[SEP]'
-        else:
-            self.pad = '[PAD]'
-            self.unk = '[UNK]'
-            self.sos = '[SOS]'
-            self.eos = '[EOS]'
+        self.pad = '[PAD]'
+        self.unk = '[UNK]'
+        self.sos = '[CLS]'
+        self.eos = '[SEP]'
 
         self.w2i, self.i2w = vocab['w2i'], vocab['i2w']
         self.a2i, self.i2a = vocab['a2i'], vocab['i2a']
 
-    def _create_data(self, bert):
+    def _create_data(self):
 
         if self.split == 'train':
-            self._create_vocab(bert)
+            self._create_vocab()
         else:
-            self._load_vocab(bert)
-
-        if bert:
-            tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-        else:
-            tokenizer = TweetTokenizer(preserve_case=False)
+            self._load_vocab()
 
         data = defaultdict(dict)
         with open(self.raw_definition_path, 'r') as file:
 
             for i, line in enumerate(file):
 
-                words = tokenizer.tokenize(line)
+                words = self.tokenizer.tokenize(line)
 
                 input = [self.sos] + words
-                if bert: # add [SEP] to end of input
+                if self.use_bert: # add [SEP] to end of input
                     input = input[:self.max_sequence_length-1] + [self.eos]
-                    target = input
+                    target = list(input)
                 else:
                     input = input[:self.max_sequence_length]
                     target = words[:self.max_sequence_length-1] + [self.eos]
@@ -149,8 +145,12 @@ class PTB(Dataset):
                 input.extend([self.pad] * (self.max_sequence_length-length))
                 target.extend([self.pad] * (self.max_sequence_length-length))
 
-                input = [self.w2i.get(w, self.w2i[self.unk]) for w in input]
-                target = [self.w2i.get(w, self.w2i[self.unk]) for w in target]
+                if self.use_bert:
+                    input = self.tokenizer.convert_tokens_to_ids(input)
+                    target = self.tokenizer.convert_tokens_to_ids(target)
+                else:
+                    input = [self.w2i.get(w, self.w2i[self.unk]) for w in input]
+                    target = [self.w2i.get(w, self.w2i[self.unk]) for w in target]
 
                 id = len(data)
                 data[id]['input'] = input
@@ -170,7 +170,10 @@ class PTB(Dataset):
 
                 target.extend([self.pad] * (self.max_sequence_length-length))
 
-                target = [self.a2i.get(w, self.a2i[self.unk]) for w in target]
+                if self.use_bert:
+                    target = self.tokenizer.convert_tokens_to_ids(target)
+                else:
+                    target = [self.a2i.get(w, self.a2i[self.unk]) for w in target]
 
                 data[i]['word'] = target
                 data[i]['word_length'] = length
@@ -182,11 +185,9 @@ class PTB(Dataset):
 
         self._load_data(vocab=False)
 
-    def _create_vocab(self, bert):
+    def _create_vocab(self):
 
         assert self.split == 'train', "Vocablurary can only be created for training file."
-
-        tokenizer = TweetTokenizer(preserve_case=False)
 
         w2c = OrderedCounter()
         a2c = OrderedCounter()
@@ -195,16 +196,10 @@ class PTB(Dataset):
         a2i = dict()
         i2a = dict()
 
-        if bert:
-            self.pad = '[PAD]'
-            self.unk = '[UNK]'
-            self.sos = '[CLS]'
-            self.eos = '[SEP]'
-        else:
-            self.pad = '[PAD]'
-            self.unk = '[UNK]'
-            self.sos = '[SOS]'
-            self.eos = '[EOS]'
+        self.pad = '[PAD]'
+        self.unk = '[UNK]'
+        self.sos = '[CLS]'
+        self.eos = '[SEP]'
 
         special_tokens = [self.pad, self.unk, self.sos, self.eos]
         for st in special_tokens:
@@ -216,7 +211,7 @@ class PTB(Dataset):
         with open(self.raw_definition_path, 'r') as file:
 
             for i, line in enumerate(file):
-                words = tokenizer.tokenize(line)
+                words = self.tokenizer.tokenize(line)
                 w2c.update(words)
 
             for w, c in w2c.items():
@@ -247,4 +242,4 @@ class PTB(Dataset):
             data = json.dumps(vocab, ensure_ascii=False)
             vocab_file.write(data.encode('utf8', 'replace'))
 
-        self._load_vocab(bert)
+        self._load_vocab()

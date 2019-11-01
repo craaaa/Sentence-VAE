@@ -6,7 +6,7 @@ from utils import to_var
 class SentenceVAE(nn.Module):
 
     def __init__(self, alphabet_size, vocab_size, embedding_size, rnn_type, hidden_size, word_dropout, embedding_dropout, latent_size,
-                sos_idx, eos_idx, pad_idx, unk_idx, max_sequence_length, num_layers=1, bidirectional=False):
+                sos_idx, eos_idx, pad_idx, unk_idx, max_sequence_length, num_layers=1, bidirectional=False, use_bert=False):
 
         super().__init__()
         self.tensor = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.Tensor
@@ -16,6 +16,7 @@ class SentenceVAE(nn.Module):
         self.eos_idx = eos_idx
         self.pad_idx = pad_idx
         self.unk_idx = unk_idx
+        self.using_bert = use_bert
 
         self.latent_size = latent_size
 
@@ -24,6 +25,9 @@ class SentenceVAE(nn.Module):
         self.num_layers = num_layers
         self.hidden_size = hidden_size
 
+        # if use_bert:
+        #     self.embedding = BertModel.from_pretrained('bert-base-uncased')
+        # else:
         self.embedding = nn.Embedding(vocab_size, embedding_size)
         self.alph_embedding = nn.Embedding(alphabet_size, embedding_size)
         self.word_dropout_rate = word_dropout
@@ -70,6 +74,9 @@ class SentenceVAE(nn.Module):
 
         # ENCODER
         input_embedding = self.embedding(input_sequence)
+        # if self.using_bert:
+        #     input_embedding = [torch.sum(torch.stack(layer)[-4:], 0) for layer in input_embedding]
+        print (input_embedding.shape)
 
         packed_input = rnn_utils.pack_padded_sequence(input_embedding, sorted_lengths.data.tolist(), batch_first=True)
 

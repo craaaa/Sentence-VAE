@@ -18,10 +18,10 @@ def main(args):
     model = SentenceVAE(
         vocab_size=len(w2i),
         alphabet_size=len(a2i),
-        sos_idx=w2i['<sos>'],
-        eos_idx=w2i['<eos>'],
-        pad_idx=w2i['<pad>'],
-        unk_idx=w2i['<unk>'],
+        sos_idx=w2i['[CLS]'],
+        eos_idx=w2i['[SEP]'],
+        pad_idx=w2i['[PAD]'],
+        unk_idx=w2i['[UNK]'],
         max_sequence_length=args.max_sequence_length,
         embedding_size=args.embedding_size,
         rnn_type=args.rnn_type,
@@ -46,14 +46,14 @@ def main(args):
 
     samples, z = model.inference(n=args.num_samples)
     print('----------SAMPLES----------')
-    print(*idx2defandword(samples, i2w=i2w, i2a=i2a, pad_idx=w2i['<pad>']), sep='\n')
+    print(*idx2defandword(samples, i2w=i2w, i2a=i2a, pad_idx=w2i['[PAD]']), sep='\n')
 
     z1 = torch.randn([args.latent_size]).numpy()
     z2 = torch.randn([args.latent_size]).numpy()
     z = to_var(torch.from_numpy(interpolate(start=z1, end=z2, steps=8)).float())
     samples, _ = model.inference(z=z)
     print('-------INTERPOLATION-------')
-    print(*idx2defandword(samples, i2w=i2w, i2a=i2a, pad_idx=w2i['<pad>']), sep='\n')
+    print(*idx2defandword(samples, i2w=i2w, i2a=i2a, pad_idx=w2i['[PAD]']), sep='\n')
 
 if __name__ == '__main__':
 

@@ -83,6 +83,6 @@ pos, neg = generate_un_prefixed_word_dictionaries(dictionary)
 
 tuples = {word: definition for dict in [pos, neg] for word, definitions in dict.items() for definition in definitions[:1]}
 
-first_def = [(word, definition) for word, definitions in dictionary.items() for definition in split_dictionary_entry(definitions)[:min(len(definitions),5)]]
+first_def = [(word, definition) for word, definitions in dictionary.items() for definition in split_dictionary_entry(definitions)[:min(len(definitions),5)]][:100]
 
-train_test_validate_split(first_def, folder="data/five_defs")
+train_test_validate_split(first_def, folder="data/short_test")
