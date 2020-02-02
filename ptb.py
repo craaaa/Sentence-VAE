@@ -6,6 +6,7 @@ import numpy as np
 from collections import defaultdict
 from torch.utils.data import Dataset
 from nltk.tokenize import TweetTokenizer
+from nltk.util import ngrams
 from transformers import BertTokenizer
 
 from utils import OrderedCounter
@@ -133,7 +134,8 @@ class PTB(Dataset):
 
             for i, line in enumerate(file):
 
-                words = self.tokenizer.tokenize(line)
+                # words = self.tokenizer.tokenize(line)
+                words = [''.join(a) for a in ngrams(line, 3)]
 
                 input = [self.sos] + words
                 if self.use_bert: # add [SEP] to end of input
