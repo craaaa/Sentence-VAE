@@ -3,8 +3,12 @@ import json
 import torch
 import argparse
 
+from collections import defaultdict
 from model import SentenceVAE
+from multiprocessing import cpu_count
+from ptb import PTB
 from transformers import BertTokenizer
+from torch.utils.data import DataLoader
 from utils import to_var, idx2defandword, interpolate
 
 
@@ -50,16 +54,58 @@ def main(args):
 
     model.eval()
 
-    samples, z = model.inference(n=args.num_samples)
-    print(*idx2defandword(samples, i2w=i2w, i2a=i2a, pad_idx=w2i['[PAD]'], use_bert=args.use_bert, bert_tokenizer=bert_tokenizer), sep='\n', )
-    print('----------SAMPLES----------')
+    if args.test_file:
+        test_dataset = PTB(
+            data_dir=args.data_dir,
+            split="test",
+            create_data=True,
+            max_sequence_length=args.max_sequence_length,
+            min_occ=args.min_occ,
+            use_bert=args.use_bert
+        )
 
-    z1 = torch.randn([args.latent_size]).numpy()
-    z2 = torch.randn([args.latent_size]).numpy()
-    z = to_var(torch.from_numpy(interpolate(start=z1, end=z2, steps=8)).float())
-    samples, _ = model.inference(z=z)
-    print('-------INTERPOLATION-------')
-    print(*idx2defandword(samples, i2w=i2w, i2a=i2a, pad_idx=w2i['[PAD]'], use_bert=args.use_bert, bert_tokenizer=bert_tokenizer), sep='\n')
+        data_loader = DataLoader(
+            dataset=test_dataset,
+            batch_size=args.batch_size,
+            shuffle=False,
+            num_workers=cpu_count(),
+            pin_memory=torch.cuda.is_available()
+        )
+        tensor = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.Tensor
+
+        tracker = defaultdict(tensor)
+
+
+        for iteration, batch in enumerate(data_loader):
+
+            batch_size = batch['input'].size(0)
+
+            for k, v in batch.items():
+                if torch.is_tensor(v):
+                    batch[k] = to_var(v)
+
+            # Forward pass
+            [def_logp, word_logp], mean, logv, z = model(batch['input'], batch['length'], batch['word_length'])
+
+            samples, z = model.inference(z=z)
+
+            word_and_def = idx2defandword(samples, i2w=i2w, i2a=i2a, pad_idx=w2i['[PAD]'], use_bert=args.use_bert, bert_tokenizer=bert_tokenizer)
+            word_and_def = [line + "\n" for line in word_and_def]
+
+            with open(args.load_checkpoint + ".test", "a") as f:
+                f.writelines(word_and_def)
+
+    else:
+        samples, z = model.inference(n=args.num_samples)
+        print('----------SAMPLES----------')
+        print(*idx2defandword(samples, i2w=i2w, i2a=i2a, pad_idx=w2i['[PAD]'], use_bert=args.use_bert, bert_tokenizer=bert_tokenizer), sep='\n', )
+
+        z1 = torch.randn([args.latent_size]).numpy()
+        z2 = torch.randn([args.latent_size]).numpy()
+        z = to_var(torch.from_numpy(interpolate(start=z1, end=z2, steps=8)).float())
+        samples, _ = model.inference(z=z)
+        print('-------INTERPOLATION-------')
+        print(*idx2defandword(samples, i2w=i2w, i2a=i2a, pad_idx=w2i['[PAD]'], use_bert=args.use_bert, bert_tokenizer=bert_tokenizer), sep='\n')
 
 if __name__ == '__main__':
 
@@ -78,7 +124,12 @@ if __name__ == '__main__':
     parser.add_argument('-ls', '--latent_size', type=int, default=16)
     parser.add_argument('-nl', '--num_layers', type=int, default=1)
     parser.add_argument('-bi', '--bidirectional', action='store_true')
-    parser.add_argument('-bert', '--use_bert', action='store_false')
+    parser.add_argument('-bert', '--use_bert', action='store_true')
+
+    parser.add_argument('-tt', '--test_file', action='store_true')
+    parser.add_argument('--min_occ', type=int, default=1)
+    parser.add_argument('-bs', '--batch_size', type=int, default=32)
+
 
     args = parser.parse_args()
 

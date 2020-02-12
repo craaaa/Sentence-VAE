@@ -4,6 +4,7 @@ import time
 import torch
 import argparse
 import numpy as np
+import utils
 from multiprocessing import cpu_count
 from tensorboardX import SummaryWriter
 from torch.utils.data import DataLoader
@@ -27,7 +28,7 @@ def main(args):
             create_data=args.create_data,
             max_sequence_length=args.max_sequence_length,
             min_occ=args.min_occ,
-            use_bert=args.use_bert
+            use_bert=False
         )
 
     model = SentenceVAE(
@@ -112,7 +113,6 @@ def main(args):
     for epoch in range(args.epochs):
 
         for split in splits:
-
             data_loader = DataLoader(
                 dataset=datasets[split],
                 batch_size=args.batch_size,
@@ -208,7 +208,7 @@ if __name__ == '__main__':
     parser.add_argument('--data_dir', type=str, default='data')
     parser.add_argument('--create_data', action='store_true')
     parser.add_argument('--max_sequence_length', type=int, default=60)
-    parser.add_argument('--min_occ', type=int, default=0)
+    parser.add_argument('--min_occ', type=int, default=1)
     parser.add_argument('--test', action='store_true')
 
     parser.add_argument('-ep', '--epochs', type=int, default=4)

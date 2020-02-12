@@ -135,7 +135,7 @@ class PTB(Dataset):
             for i, line in enumerate(file):
 
                 # words = self.tokenizer.tokenize(line)
-                words = [''.join(a) for a in ngrams(line, 3)]
+                words = [''.join(a) for a in ngrams(line.strip(), 2)]
 
                 input = [self.sos] + words
                 if self.use_bert: # add [SEP] to end of input
@@ -217,7 +217,8 @@ class PTB(Dataset):
         with open(self.raw_definition_path, 'r') as file:
 
             for i, line in enumerate(file):
-                words = self.tokenizer.tokenize(line)
+                # words = self.tokenizer.tokenize(line)
+                words = [''.join(a) for a in ngrams(line.strip(), 2)]
                 w2c.update(words)
 
             for w, c in w2c.items():
@@ -248,7 +249,9 @@ class PTB(Dataset):
             alph_size = len(a2i)
 
         print("Vocabulary of %i keys created." % vocab_size)
+        print(list(w2i.keys())[:100])
         print("Alphabet of %i keys created." % alph_size)
+        print(list(a2i.keys()))
 
 
         vocab = dict(w2i=w2i, i2w=i2w, a2i=a2i, i2a=i2a, vocab_size=vocab_size, alph_size=alph_size)

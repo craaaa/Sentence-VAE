@@ -22,27 +22,42 @@ def to_var(x, volatile=False):
 def idx2word(idx, i2w, pad_idx, sep=" ", use_bert=False, bert_tokenizer=None):
 
     sent_str = [str()]*len(idx)
+    sent_list = [[]]*len(idx)
 
     for i, sent in enumerate(idx):
         if use_bert:
             sent_str[i] = bert_tokenizer.decode(sent)
         else:
+            sent_list[i] = []
             for word_id in sent:
                 if word_id == pad_idx:
                     break
-                sent_str[i] += i2w[str(word_id.item())] + sep
-
+                word = i2w[str(word_id.item())]
+                sent_str[i] += word + sep
+                sent_list[i].append(word)
             sent_str[i] = sent_str[i].strip()
 
-    return sent_str
+    return sent_str, sent_list
 
 
 def idx2defandword(def_and_word, i2w, i2a, pad_idx, use_bert=False, bert_tokenizer=None):
     def_idx, word_idx = def_and_word
-    def_string = idx2word(def_idx, i2w=i2w, pad_idx=pad_idx, use_bert=use_bert, bert_tokenizer=bert_tokenizer)
-    word_string = idx2word(word_idx, i2w=i2a, pad_idx=pad_idx, sep="", use_bert=use_bert, bert_tokenizer=bert_tokenizer)
+    def_string, def_list = idx2word(def_idx, i2w=i2w, pad_idx=pad_idx, use_bert=use_bert, bert_tokenizer=bert_tokenizer)
+    def_string = process_ngram_string(def_list, n=2)
+    word_string, word_list = idx2word(word_idx, i2w=i2a, pad_idx=pad_idx, sep="", use_bert=use_bert, bert_tokenizer=bert_tokenizer)
     #[:-5] removes the <eos> token at the end of the prediction
     return [word[:-5] + ": " + defn[:-5] for defn, word in zip(def_string, word_string)]
+
+def process_ngram_string(ngram_list, n=2):
+    def get_ngrams(ngram_list):
+        final_result = ngram_list[0]
+        for prev, current in zip(ngram_list[:-1], ngram_list[1:]):
+            if current[:-1] == prev[1:]: # if ngrams match
+                final_result += current[-1]
+            else:
+                final_result += ("/" + current)
+        return final_result
+    return [get_ngrams(n) for n in ngram_list]
 
 def interpolate(start, end, steps):
 
