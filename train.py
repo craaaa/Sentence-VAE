@@ -101,8 +101,8 @@ def main(args):
         KL_weight = kl_anneal_function(anneal_function, step, k, x0)
         word_weight = word_weight_function(step, k, x0)
 
-        return  {'def': 1,
-                 'word': word_weight,
+        return  {'def': 0,
+                 'word': 1,
                  'kl': KL_weight
                 }
 

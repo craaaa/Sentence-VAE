@@ -45,6 +45,7 @@ def idx2defandword(def_and_word, i2w, i2a, pad_idx, use_bert=False, bert_tokeniz
     def_string, def_list = idx2word(def_idx, i2w=i2w, pad_idx=pad_idx, use_bert=use_bert, bert_tokenizer=bert_tokenizer)
     def_string = process_ngram_string(def_list, n=2)
     word_string, word_list = idx2word(word_idx, i2w=i2a, pad_idx=pad_idx, sep="", use_bert=use_bert, bert_tokenizer=bert_tokenizer)
+    word_string = process_ngram_string(word_list, n=2)
     #[:-5] removes the <eos> token at the end of the prediction
     return [word[:-5] + ": " + defn[:-5] for defn, word in zip(def_string, word_string)]
 

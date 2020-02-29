@@ -167,7 +167,8 @@ class PTB(Dataset):
 
             for i, line in enumerate(file):
 
-                words = list(line.strip())
+                # words = list(line.strip())
+                words = [''.join(a) for a in ngrams(line.strip(), 2)]
 
                 target = words[:self.max_sequence_length-1]
                 target = target + [self.eos]
@@ -231,7 +232,9 @@ class PTB(Dataset):
         with open(self.raw_word_path, 'r') as file:
 
             for i, line in enumerate(file):
-                words = list(line.strip())
+                # words = list(line.strip())
+                words = [''.join(a) for a in ngrams(line.strip(), 2)]
+
                 a2c.update(words)
 
         for w, c in a2c.items():
